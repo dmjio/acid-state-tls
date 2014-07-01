@@ -42,10 +42,14 @@ import Network.BSD               ( getHostByName, getProtocolNumber, getServiceP
 import System.Directory          ( removeFile )
 import System.IO.Error           ( ioeGetErrorType, isFullError, isDoesNotExistError )
 
-debugStrLn :: String -> IO ()
-debugStrLn s =
-    do putStrLn s -- uncomment to enable debugging
-       return ()
+
+debugStrLn :: Show a => a -> IO ()
+debugStrLn s = do 
+#if DEBUG  
+  print s -- uncomment to enable debugging
+#else
+  return ()
+#endif
 
 initSSLContext :: FilePath  -- ^ path to ssl certificate
                -> FilePath  -- ^ path to ssl private key
@@ -100,6 +104,7 @@ acidServerTLS sslCert sslKey checkAuth port acidState
        let worker :: (Socket, SSL, SockAddr) -> IO ()
            worker (socket, ssl, _sockAddr) =
                do -- TODO: log this connection, sockAddr
+                  debugStrLn ("sock addr", _sockAddr)
                   let socketCommChannel :: CommChannel
                       socketCommChannel = CommChannel
                         { ccPut     = SSL.write ssl
@@ -107,8 +112,8 @@ acidServerTLS sslCert sslKey checkAuth port acidState
                         , ccClose   = shutdownClose socket ssl
                         }
                   forkIO $ (do authorized <- checkAuth socketCommChannel
-                               when authorized $
-                                    ignoreSome $ (process socketCommChannel acidState)
+                               debugStrLn (authorized, "authorized")
+                               when authorized $ ignoreSome $ (process socketCommChannel acidState)
                                ccClose socketCommChannel) `catch` (\(e::SomeException) -> do
                                                                      shutdownClose socket ssl
                                                                      throwIO e)
@@ -202,16 +207,20 @@ connectToTLS hostName (Service serv)
 
 connectToTLS hostName (PortNumber port)
   = do proto <- getProtocolNumber "tcp"
+       debugStrLn ("proto", proto)
        sock <- socket AF_INET Stream proto
+       debugStrLn ("sock", sock)
        (do he <- getHostByName hostName
+           debugStrLn he
            Socket.connect sock (SockAddrInet port (hostAddress he))
            ctx <- SSL.context
            ssl <- SSL.connection ctx sock
            SSL.connect ssl
-           return ssl) `catch` (\e -> do print (e :: SomeSSLException)
+           return ssl) `catch` (\e -> do print (e :: SomeSSLException, "<-- exception")
                                          sClose sock
                                          throwIO e
                                )
+
 #if !defined(mingw32_HOST_OS) && !defined(cygwin32_HOST_OS) && !defined(_WIN32)
 connectToTLS _hostName p@(UnixSocket path)
   = do debugStrLn $ "connectToTLS: " ++ show p

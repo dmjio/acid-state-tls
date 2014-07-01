@@ -17,12 +17,20 @@ Extra-source-files:
         examples/ssl/test.csr
         examples/ssl/test.key.org
 
+flag debug
+  description: operate in developer mode
+  default: False
+  manual: True
+
 Source-repository head
   type:          git
   location:      https://github.com/acid-state/acid-state-tls
 
 Library
   Hs-Source-Dirs:      src
+
+  if flag(debug)
+      cpp-options: -DDEBUG
 
   Exposed-Modules:     Data.Acid.Remote.TLS
 
